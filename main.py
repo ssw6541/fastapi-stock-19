@@ -3,6 +3,7 @@ import threading
 import time
 from pathlib import Path
 from urllib.request import Request as UrlRequest, urlopen
+import re
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -67,8 +68,43 @@ def get_market():
         return data
 
 
+HISTORY_DAYS = 30
+HISTORY_CACHE_SECONDS = 600
+_history_cache = {}
+
+
+def get_history(code):
+    with _lock:
+        cached = _history_cache.get(code)
+        if cached and time.monotonic() - cached[0] < HISTORY_CACHE_SECONDS:
+            return cached[1]
+    url = f'https://fchart.stock.naver.com/sise.nhn?symbol={code}&timeframe=day&count={HISTORY_DAYS}&requestType=0'
+    request = UrlRequest(url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://finance.naver.com/'})
+    with urlopen(request, timeout=8) as response:
+        text = response.read().decode('euc-kr', errors='ignore')
+    rows = []
+    for raw in re.findall(r'<item data="([^"]+)"', text):
+        date, open_, high, low, close, volume = raw.split('|')
+        rows.append({'date': f'{date[:4]}-{date[4:6]}-{date[6:]}', 'open': int(open_), 'high': int(high),
+                     'low': int(low), 'close': int(close), 'volume': int(volume)})
+    if not rows:
+        raise ValueError('일별 데이터가 비어 있습니다')
+    with _lock:
+        _history_cache[code] = (time.monotonic(), rows)
+    return rows
+
+
+@app.get('/api/history/{code}')
+def history(code: str):
+    if code not in STOCKS:
+        raise HTTPException(status_code=404, detail='지원하지 않는 종목 코드입니다.')
+    try:
+        return {'code': code, 'days': HISTORY_DAYS, 'data': get_history(code)}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=503, detail='일별 시세를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.') from exc
+
+
 @app.get('/')
-@app.get('/tomato', include_in_schema=False)
 def home(request: Request):
     return templates.TemplateResponse(request, 'index.html')
 
