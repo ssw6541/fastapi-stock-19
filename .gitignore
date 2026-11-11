@@ -1,0 +1,26 @@
+﻿# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.aws/
+credentials.json
+service-account*.json
+
+# Runtime logs
+*.log
+nohup.out
