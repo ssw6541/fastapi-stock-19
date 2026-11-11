@@ -73,6 +73,14 @@ HISTORY_CACHE_SECONDS = 600
 _history_cache = {}
 
 
+INDEXES = ('KOSPI', 'KOSDAQ')
+
+
+def _num(text):
+    # 종목은 정수, 지수는 소수점 값이 옵니다.
+    return float(text) if '.' in text else int(text)
+
+
 def get_history(code):
     with _lock:
         cached = _history_cache.get(code)
@@ -85,8 +93,8 @@ def get_history(code):
     rows = []
     for raw in re.findall(r'<item data="([^"]+)"', text):
         date, open_, high, low, close, volume = raw.split('|')
-        rows.append({'date': f'{date[:4]}-{date[4:6]}-{date[6:]}', 'open': int(open_), 'high': int(high),
-                     'low': int(low), 'close': int(close), 'volume': int(volume)})
+        rows.append({'date': f'{date[:4]}-{date[4:6]}-{date[6:]}', 'open': _num(open_), 'high': _num(high),
+                     'low': _num(low), 'close': _num(close), 'volume': int(volume)})
     if not rows:
         raise ValueError('일별 데이터가 비어 있습니다')
     with _lock:
@@ -96,7 +104,7 @@ def get_history(code):
 
 @app.get('/api/history/{code}')
 def history(code: str):
-    if code not in STOCKS:
+    if code not in STOCKS and code not in INDEXES:
         raise HTTPException(status_code=404, detail='지원하지 않는 종목 코드입니다.')
     try:
         return {'code': code, 'days': HISTORY_DAYS, 'data': get_history(code)}
